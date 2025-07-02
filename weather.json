@@ -1,0 +1,10 @@
+{
+  "city": "Ho Chi Minh City",
+  "country": "VN",
+  "temperature": 32,
+  "description": "clear sky",
+  "humidity": 66,
+  "windSpeed": 3.09,
+  "icon": "01d",
+  "lastUpdated": "2025-07-02T10:26:35.599Z"
+}
