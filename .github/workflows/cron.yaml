@@ -1,4 +1,4 @@
-name: Update Weather Data
+name: "Update Weather Data"
 
 on:
   schedule:
@@ -18,130 +18,83 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: |
-          bun init -y
-          bun add axios
-
       - name: Update weather data
         env:
           WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
           CITY: ${{ vars.WEATHER_CITY || 'Ho Chi Minh City' }}
         run: |
-          cat > update_weather.js << 'EOF'
-          const axios = require('axios');
-          const fs = require('fs');
+          # Get weather data using curl
+          if [ -n "$WEATHER_API_KEY" ]; then
+            echo "🌤️ Fetching real weather data..."
+            WEATHER_JSON=$(curl -s "https://api.openweathermap.org/data/2.5/weather?q=$CITY&appid=$WEATHER_API_KEY&units=metric")
+            
+            if echo "$WEATHER_JSON" | grep -q '"name"'; then
+              CITY_NAME=$(echo "$WEATHER_JSON" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+              COUNTRY=$(echo "$WEATHER_JSON" | grep -o '"country":"[^"]*"' | cut -d'"' -f4)
+              TEMP=$(echo "$WEATHER_JSON" | grep -o '"temp":[^,]*' | cut -d':' -f2 | cut -d'.' -f1)
+              DESCRIPTION=$(echo "$WEATHER_JSON" | grep -o '"description":"[^"]*"' | cut -d'"' -f4)
+              HUMIDITY=$(echo "$WEATHER_JSON" | grep -o '"humidity":[^,]*' | cut -d':' -f2)
+              WIND_SPEED=$(echo "$WEATHER_JSON" | grep -o '"speed":[^,]*' | cut -d':' -f2)
+              
+              # Capitalize first letter of description
+              DESCRIPTION=$(echo "$DESCRIPTION" | sed 's/./\U&/')
+            else
+              echo "❌ API call failed, using mock data"
+              CITY_NAME="$CITY"
+              COUNTRY="VN"
+              TEMP=$((RANDOM % 15 + 25))
+              DESCRIPTIONS=("Sunny" "Cloudy" "Rainy" "Partly cloudy")
+              DESCRIPTION=${DESCRIPTIONS[$((RANDOM % 4))]}
+              HUMIDITY=$((RANDOM % 30 + 60))
+              WIND_SPEED=$((RANDOM % 10 + 5))
+            fi
+          else
+            echo "⚠️ No API key found, using mock data"
+            CITY_NAME="$CITY"
+            COUNTRY="VN"
+            TEMP=$((RANDOM % 15 + 25))
+            DESCRIPTIONS=("Sunny" "Cloudy" "Rainy" "Partly cloudy")
+            DESCRIPTION=${DESCRIPTIONS[$((RANDOM % 4))]}
+            HUMIDITY=$((RANDOM % 30 + 60))
+            WIND_SPEED=$((RANDOM % 10 + 5))
+          fi
 
-          async function updateWeather() {
-            try {
-              const apiKey = process.env.WEATHER_API_KEY;
-              const city = process.env.CITY;
-              
-                             if (!apiKey) {
-                 console.log('⚠️  WEATHER_API_KEY not found. Using mock data.');
-                 const mockWeather = {
-                   city: city,
-                   country: 'VN',
-                   temperature: Math.floor(Math.random() * 15) + 25,
-                   description: ['sunny', 'cloudy', 'rainy', 'partly cloudy'][Math.floor(Math.random() * 4)],
-                   humidity: Math.floor(Math.random() * 30) + 60,
-                   windSpeed: Math.floor(Math.random() * 10) + 5,
-                   lastUpdated: new Date().toISOString()
-                 };
-                 
-                 fs.writeFileSync('weather.json', JSON.stringify(mockWeather, null, 2));
-                 
-                 // Update README with mock weather table
-                 let readme = fs.readFileSync('README.md', 'utf8');
-                 const mockWeatherTable = '<!-- WEATHER:START -->' + '\n' +
-                   '## 🌤️ Current Weather in ' + mockWeather.city + ', ' + mockWeather.country + '\n\n' +
-                   '| 🕐 Time | 🌡️ Temperature | 🌤️ Condition | 💧 Humidity | 💨 Wind Speed | 🗓️ Last Updated |\n' +
-                   '|---------|---------------|--------------|-------------|--------------|------------------|\n' +
-                   '| Now | ' + mockWeather.temperature + '°C | ' + 
-                   (mockWeather.description.charAt(0).toUpperCase() + mockWeather.description.slice(1)) + ' | ' +
-                   mockWeather.humidity + '% | ' + mockWeather.windSpeed + ' m/s | ' +
-                   new Date(mockWeather.lastUpdated).toLocaleString('en-US', { timeZone: 'UTC', timeZoneName: 'short' }) + ' |\n\n' +
-                   '---\n' +
-                   '<!-- WEATHER:END -->';
-                 
-                 if (readme.includes('<!-- WEATHER:START -->')) {
-                   readme = readme.replace(/<!-- WEATHER:START -->[\s\S]*<!-- WEATHER:END -->/, mockWeatherTable);
-                 } else {
-                   readme = readme.replace('### Hi there 👋', '### Hi there 👋' + '\n\n' + mockWeatherTable);
-                 }
-                 
-                 fs.writeFileSync('README.md', readme);
-                 console.log('✅ Mock weather data updated successfully');
-                 return;
-               }
-              
-              const response = await axios.get(
-                `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${apiKey}&units=metric`
-              );
-              
-              const weatherData = {
-                city: response.data.name,
-                country: response.data.sys.country,
-                temperature: Math.round(response.data.main.temp),
-                description: response.data.weather[0].description,
-                humidity: response.data.main.humidity,
-                windSpeed: response.data.wind.speed,
-                icon: response.data.weather[0].icon,
-                lastUpdated: new Date().toISOString()
-              };
-              
-              // Save to JSON file
-              fs.writeFileSync('weather.json', JSON.stringify(weatherData, null, 2));
-              
-              // Create a weather badge for README
-              const weatherBadge = `![Weather](https://img.shields.io/badge/Weather-${weatherData.temperature}°C%20${encodeURIComponent(weatherData.description)}-blue?style=flat-square)`;
-              
-                                            // Update README with weather table
-               let readme = fs.readFileSync('README.md', 'utf8');
-               
-               // Create weather table
-               const weatherTable = '<!-- WEATHER:START -->' + '\n' +
-                 '## 🌤️ Current Weather in ' + weatherData.city + ', ' + weatherData.country + '\n\n' +
-                 '| 🕐 Time | 🌡️ Temperature | 🌤️ Condition | 💧 Humidity | 💨 Wind Speed | 🗓️ Last Updated |\n' +
-                 '|---------|---------------|--------------|-------------|--------------|------------------|\n' +
-                 '| Now | ' + weatherData.temperature + '°C | ' + 
-                 (weatherData.description.charAt(0).toUpperCase() + weatherData.description.slice(1)) + ' | ' +
-                 weatherData.humidity + '% | ' + weatherData.windSpeed + ' m/s | ' +
-                 new Date(weatherData.lastUpdated).toLocaleString('en-US', { timeZone: 'UTC', timeZoneName: 'short' }) + ' |\n\n' +
-                 '---\n' +
-                 '<!-- WEATHER:END -->';
-               
-               if (readme.includes('<!-- WEATHER:START -->')) {
-                 readme = readme.replace(/<!-- WEATHER:START -->[\s\S]*<!-- WEATHER:END -->/, weatherTable);
-               } else {
-                 readme = readme.replace('### Hi there 👋', `### Hi there 👋\n\n${weatherTable}`);
-               }
-              
-              fs.writeFileSync('README.md', readme);
-              
-              console.log(`✅ Weather updated: ${weatherData.temperature}°C, ${weatherData.description} in ${weatherData.city}`);
-              
-            } catch (error) {
-              console.error('❌ Error updating weather:', error.message);
-              process.exit(1);
-            }
-          }
+          # Get current timestamp
+          TIMESTAMP=$(date -u '+%m/%d/%Y, %I:%M:%S %p UTC')
 
-          updateWeather();
+          # Create weather table content
+          cat > weather_table.tmp << EOF
+          <!-- WEATHER:START -->
+          ## 🌤️ Current Weather in $CITY_NAME, $COUNTRY
+
+          | 🕐 Time | 🌡️ Temperature | 🌤️ Condition | 💧 Humidity | 💨 Wind Speed | 🗓️ Last Updated |
+          |---------|---------------|--------------|-------------|--------------|-----------------|
+          | Now | ${TEMP}°C | $DESCRIPTION | ${HUMIDITY}% | ${WIND_SPEED} m/s | $TIMESTAMP |
+
+          ---
+          <!-- WEATHER:END -->
           EOF
 
-          bun run update_weather.js
+          # Update README.md
+          if grep -q "<!-- WEATHER:START -->" README.md; then
+            # Replace existing weather section
+            sed -i '/<!-- WEATHER:START -->/,/<!-- WEATHER:END -->/d' README.md
+            sed -i '/### Hi there 👋/r weather_table.tmp' README.md
+          else
+            # Add weather section after the introduction
+            sed -i '/### Hi there 👋/r weather_table.tmp' README.md
+          fi
+
+          # Clean up temporary file
+          rm -f weather_table.tmp
+
+          echo "✅ Weather updated: ${TEMP}°C, $DESCRIPTION in $CITY_NAME"
 
       - name: Commit and push changes
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "Weather Bot"
-          git add .
+          git add README.md
 
           if git diff --staged --quiet; then
             echo "No changes to commit"
@@ -154,9 +107,12 @@ jobs:
         run: |
           echo "## Weather Update Summary" >> $GITHUB_STEP_SUMMARY
           echo "- **Time**: $(date '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
-          if [ -f weather.json ]; then
-            echo "- **City**: $(cat weather.json | grep -o '"city":"[^"]*"' | cut -d'"' -f4)" >> $GITHUB_STEP_SUMMARY
-            echo "- **Temperature**: $(cat weather.json | grep -o '"temperature":[^,]*' | cut -d':' -f2)°C" >> $GITHUB_STEP_SUMMARY
-            echo "- **Condition**: $(cat weather.json | grep -o '"description":"[^"]*"' | cut -d'"' -f4)" >> $GITHUB_STEP_SUMMARY
+          if grep -q "<!-- WEATHER:START -->" README.md; then
+            CITY_FROM_README=$(grep -A 5 "<!-- WEATHER:START -->" README.md | grep "Current Weather" | sed 's/.*Weather in \([^,]*\).*/\1/')
+            TEMP_FROM_README=$(grep -A 8 "<!-- WEATHER:START -->" README.md | grep "| Now |" | awk -F'|' '{print $3}' | xargs)
+            CONDITION_FROM_README=$(grep -A 8 "<!-- WEATHER:START -->" README.md | grep "| Now |" | awk -F'|' '{print $4}' | xargs)
+            echo "- **City**: $CITY_FROM_README" >> $GITHUB_STEP_SUMMARY
+            echo "- **Temperature**: $TEMP_FROM_README" >> $GITHUB_STEP_SUMMARY
+            echo "- **Condition**: $CONDITION_FROM_README" >> $GITHUB_STEP_SUMMARY
           fi
           echo "- **Status**: ✅ Weather data updated successfully" >> $GITHUB_STEP_SUMMARY
