@@ -9,6 +9,8 @@ on:
 jobs:
   update-weather:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -145,7 +147,7 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "🌤️ Update weather data - $(date '+%Y-%m-%d %H:%M UTC')"
-            git push
+            git push origin ${{ github.ref_name }}
           fi
 
       - name: Create weather summary
